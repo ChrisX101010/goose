@@ -10,17 +10,31 @@
 name: CI
 
 on:
+  workflow_call:
+    inputs:
+      watchdog:
+        description: Run the bounded regression-watchdog profile
+        type: boolean
+        default: false
+      watchdog_attempt:
+        description: Distinguish independent watchdog invocations
+        type: string
+        default: baseline
   push:
   pull_request:
   workflow_dispatch:
 
 # A newer push to the same branch makes the running job's answer stale.
+permissions:
+  contents: read
+
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.watchdog_attempt || 'baseline' }}
   cancel-in-progress: true
 
 jobs:
   test:
+    if: ${{ !inputs.watchdog }}
     name: ${{ matrix.os }} / baseline
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -124,3 +138,14 @@ jobs:
 
       - name: Test compiler, generated C, runtime lifecycle and samples
         run: python test/run_tests.py --exe build-sanitize/goose --profile sanitize --cc clang
+
+  watchdog_policy:
+    name: Watchdog policy tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Test reporting policy without credentials
+        run: node --test .github/watchdog-policy.test.cjs .github/watchdog-workflow.test.cjs
