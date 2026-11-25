@@ -1,0 +1,36 @@
+name: Offline package probe
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Build Goose
+        run: |
+          cmake -S . -B build-offline-probe -DCMAKE_BUILD_TYPE=Release -DGOOSE_BUILTIN_LIBS=
+          cmake --build build-offline-probe --parallel 2
+      - name: Check offline package resolution
+        run: |
+          python3 scripts/offline_package_probe.py check --exe build-offline-probe/goose \
+            --commit "$(git rev-parse HEAD)" --out offline-package-evidence.json
+      - name: Upload probe evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-package-evidence
+          path: offline-package-evidence.json
+          if-no-files-found: ignore
+          retention-days: 7
